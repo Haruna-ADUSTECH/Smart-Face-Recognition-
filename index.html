@@ -39,10 +39,6 @@
             transition: transform 0.3s ease;
         }
 
-        .card:hover {
-            transform: translateY(-5px);
-        }
-
         #camera {
             width: 100%;
             max-width: 600px;
@@ -63,31 +59,11 @@
             margin: 10px;
         }
 
-        .btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-
         .gallery {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
             gap: 1.5rem;
             margin-top: 2rem;
-        }
-
-        .profile-card {
-            background: white;
-            border-radius: 15px;
-            padding: 1rem;
-            text-align: center;
-            box-shadow: var(--shadow);
-        }
-
-        .profile-img {
-            width: 100%;
-            height: 150px;
-            object-fit: cover;
-            border-radius: 10px;
         }
 
         .loader {
@@ -115,11 +91,11 @@
 
         <div class="card">
             <h2><i class="fas fa-user-plus"></i> Add New Profile</h2>
-            <input type="text" id="name" placeholder="Full Name" class="input-field">
+            <input type="text" id="name" placeholder="Full Name">
             <input type="number" id="age" placeholder="Age">
             <input type="text" id="address" placeholder="Address">
             <input type="tel" id="phone" placeholder="Phone">
-            <input type="file" id="imageInput" accept="image/*" style="margin: 15px 0;">
+            <input type="file" id="imageInput" accept="image/*">
             <button class="btn" onclick="savePerson()" id="saveBtn">
                 <i class="fas fa-save"></i> Save Profile
             </button>
@@ -133,7 +109,7 @@
                 <i class="fas fa-camera"></i> Scan Face
             </button>
             <div class="loader" id="scanLoader"></div>
-            <div id="result" style="margin-top: 20px;"></div>
+            <div id="result"></div>
         </div>
 
         <div class="card">
@@ -149,49 +125,55 @@
         let isProcessing = false;
         const storedPeople = JSON.parse(localStorage.getItem('people')) || [];
 
-        // Initialize face API with proper CDN paths
+        // Initialize face recognition models
         async function initFaceAPI() {
             try {
-                await faceapi.nets.ssdMobilenetv1.loadFromUri(
-                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
-                );
-                await faceapi.nets.faceLandmark68Net.loadFromUri(
-                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
-                );
-                await faceapi.nets.faceRecognitionNet.loadFromUri(
-                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
-                );
-                console.log('Face API models loaded successfully');
+                // Use verified GitHub raw paths for model weights
+                const weightsPath = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights/';
+                
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(weightsPath);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(weightsPath);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(weightsPath);
+                
+                console.log('Face recognition models loaded successfully');
+                return true;
             } catch (error) {
-                console.error('Error loading Face API models:', error);
-                alert('Error initializing face recognition. Please refresh the page.');
+                console.error('Model loading failed:', error);
+                alert('Failed to initialize face recognition. Please check your internet connection and refresh the page.');
+                return false;
             }
         }
 
-        // Camera initialization
+        // Initialize camera with error handling
         async function startCamera() {
             try {
+                const video = document.getElementById('camera');
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: "user" } 
                 });
-                const video = document.getElementById('camera');
+                
                 video.srcObject = stream;
-                await new Promise(resolve => video.onloadedmetadata = resolve);
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = resolve;
+                    video.onerror = reject;
+                });
                 video.play();
             } catch (error) {
-                alert('Camera access error: ' + error.message);
+                alert('Camera access denied: Please enable camera permissions and refresh the page.');
+                console.error('Camera error:', error);
             }
         }
 
-        // Save profile with enhanced error handling
+        // Save profile with image processing
         async function savePerson() {
             if (isProcessing) return;
-            const file = document.getElementById('imageInput').files[0];
-            if (!file) return alert('Please select an image file');
-
+            
             try {
                 isProcessing = true;
                 toggleLoader('save', true);
+
+                const file = document.getElementById('imageInput').files[0];
+                if (!file) throw new Error('Please select an image file');
 
                 const { name, age, address, phone } = getFormData();
                 const { imageData, descriptor } = await processImage(file);
@@ -226,7 +208,8 @@
 
                 const video = document.getElementById('camera');
                 const canvas = document.createElement('canvas');
-                [canvas.width, canvas.height] = [video.videoWidth, video.videoHeight];
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
                 canvas.getContext('2d').drawImage(video, 0, 0);
 
                 const detection = await faceapi.detectSingleFace(canvas)
@@ -299,22 +282,16 @@
         function showResult(match, error) {
             const resultDiv = document.getElementById('result');
             resultDiv.innerHTML = match ? `
-                <div class="result-card" style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3 style="color: #2c3e50; margin-bottom: 15px;">
-                        <i class="fas fa-check-circle" style="color: #27ae60;"></i> 
-                        Match Found: ${match.name}
-                    </h3>
-                    <p><strong>Age:</strong> ${match.age}</p>
-                    <p><strong>Address:</strong> ${match.address}</p>
-                    <p><strong>Phone:</strong> ${match.phone}</p>
-                    <p><strong>Confidence:</strong> ${Math.round((1 - match.distance) * 100)}%</p>
+                <div class="result-card">
+                    <h3><i class="fas fa-check-circle"></i> Match Found: ${match.name}</h3>
+                    <p>Age: ${match.age}</p>
+                    <p>Address: ${match.address}</p>
+                    <p>Phone: ${match.phone}</p>
+                    <p>Confidence: ${Math.round((1 - match.distance) * 100)}%</p>
                 </div>
             ` : `
-                <div class="result-card" style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                    <h3 style="color: #2c3e50;">
-                        <i class="fas fa-times-circle" style="color: #e74c3c;"></i> 
-                        ${error || 'No matching profile found'}
-                    </h3>
+                <div class="result-card">
+                    <h3><i class="fas fa-times-circle"></i> ${error || 'No matching profile found'}</h3>
                 </div>
             `;
         }
@@ -337,9 +314,9 @@
             `).join('');
         }
 
-        // Initialize app
-        (async function init() {
-            await initFaceAPI();
+        // Initialize application
+        (async () => {
+            if (!await initFaceAPI()) return;
             await startCamera();
             updateGallery();
         })();
