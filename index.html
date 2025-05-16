@@ -3,216 +3,334 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Recognition App</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>Smart Face Recognition</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary: #2c3e50;
-            --secondary: #3498db;
+            --gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --shadow: 0 8px 32px rgba(0,0,0,0.1);
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Poppins', sans-serif;
             margin: 0;
-            padding: 20px;
-            background: #f5f6fa;
+            padding: 2rem;
+            min-height: 100vh;
+            background: var(--gradient);
+            color: white;
         }
 
         .container {
-            max-width: 1000px;
+            max-width: 1200px;
             margin: 0 auto;
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
         }
 
         .card {
             background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 2rem;
+            border-radius: 15px;
+            margin-bottom: 2rem;
+            color: #333;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
         }
 
         #camera {
             width: 100%;
             max-width: 600px;
-            border-radius: 8px;
+            border-radius: 15px;
+            border: 3px solid white;
             background: #333;
         }
 
         .btn {
-            background: var(--secondary);
+            background: var(--gradient);
             color: white;
+            padding: 12px 25px;
             border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
+            border-radius: 25px;
             cursor: pointer;
+            font-size: 16px;
             transition: opacity 0.3s;
+            margin: 10px;
         }
 
-        .btn:hover {
-            opacity: 0.9;
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
         }
 
         .gallery {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
         }
 
         .profile-card {
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
+            background: white;
+            border-radius: 15px;
+            padding: 1rem;
             text-align: center;
+            box-shadow: var(--shadow);
         }
 
         .profile-img {
             width: 100%;
-            height: 120px;
+            height: 150px;
             object-fit: cover;
-            border-radius: 5px;
+            border-radius: 10px;
+        }
+
+        .loader {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Face Recognition System <i class="fas fa-camera"></i></h1>
-        
+        <h1 style="text-align: center; margin-bottom: 2rem;">
+            <i class="fas fa-smile-beam"></i> Smart Face Recognition
+        </h1>
+
         <div class="card">
-            <h2>Add New Person</h2>
-            <input type="text" id="name" placeholder="Name" class="input-field">
+            <h2><i class="fas fa-user-plus"></i> Add New Profile</h2>
+            <input type="text" id="name" placeholder="Full Name" class="input-field">
             <input type="number" id="age" placeholder="Age">
             <input type="text" id="address" placeholder="Address">
             <input type="tel" id="phone" placeholder="Phone">
-            <input type="file" id="imageInput" accept="image/*">
-            <button class="btn" onclick="savePerson()">Save Profile</button>
+            <input type="file" id="imageInput" accept="image/*" style="margin: 15px 0;">
+            <button class="btn" onclick="savePerson()" id="saveBtn">
+                <i class="fas fa-save"></i> Save Profile
+            </button>
+            <div class="loader" id="saveLoader"></div>
         </div>
 
         <div class="card">
-            <h2>Face Recognition</h2>
+            <h2><i class="fas fa-search"></i> Face Recognition</h2>
             <video id="camera" autoplay></video>
-            <button class="btn" onclick="captureImage()">Scan Face</button>
-            <div id="result"></div>
+            <button class="btn" onclick="captureImage()" id="scanBtn">
+                <i class="fas fa-camera"></i> Scan Face
+            </button>
+            <div class="loader" id="scanLoader"></div>
+            <div id="result" style="margin-top: 20px;"></div>
         </div>
 
         <div class="card">
-            <h2>Saved Profiles</h2>
+            <h2><i class="fas fa-users"></i> Saved Profiles</h2>
             <div id="gallery" class="gallery"></div>
         </div>
     </div>
 
-    <!-- Load all dependencies from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
     <script>
-        let videoStream;
+        let isProcessing = false;
         const storedPeople = JSON.parse(localStorage.getItem('people')) || [];
 
-        // Initialize face-api.js from CDN
+        // Initialize face API with proper CDN paths
         async function initFaceAPI() {
-            await faceapi.nets.ssdMobilenetv1.loadFromUri(
-                'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights/'
-            );
-            await faceapi.nets.faceLandmark68Net.loadFromUri(
-                'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights/'
-            );
-            await faceapi.nets.faceRecognitionNet.loadFromUri(
-                'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights/'
-            );
-        }
-
-        // Camera setup
-        async function startCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-                document.getElementById('camera').srcObject = stream;
-            } catch (err) {
-                alert('Camera access error: ' + err.message);
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(
+                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
+                );
+                await faceapi.nets.faceLandmark68Net.loadFromUri(
+                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
+                );
+                await faceapi.nets.faceRecognitionNet.loadFromUri(
+                    'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/weights/'
+                );
+                console.log('Face API models loaded successfully');
+            } catch (error) {
+                console.error('Error loading Face API models:', error);
+                alert('Error initializing face recognition. Please refresh the page.');
             }
         }
 
-        // Save profile with face data
+        // Camera initialization
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user" } 
+                });
+                const video = document.getElementById('camera');
+                video.srcObject = stream;
+                await new Promise(resolve => video.onloadedmetadata = resolve);
+                video.play();
+            } catch (error) {
+                alert('Camera access error: ' + error.message);
+            }
+        }
+
+        // Save profile with enhanced error handling
         async function savePerson() {
+            if (isProcessing) return;
             const file = document.getElementById('imageInput').files[0];
-            if (!file) return alert('Please select an image');
+            if (!file) return alert('Please select an image file');
 
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                const img = await faceapi.bufferToImage(e.target.result);
-                const detection = await faceapi.detectSingleFace(img)
-                    .withFaceLandmarks()
-                    .withFaceDescriptor();
+            try {
+                isProcessing = true;
+                toggleLoader('save', true);
 
-                if (!detection) return alert('No face detected');
+                const { name, age, address, phone } = getFormData();
+                const { imageData, descriptor } = await processImage(file);
 
                 storedPeople.push({
-                    name: document.getElementById('name').value,
-                    age: document.getElementById('age').value,
-                    address: document.getElementById('address').value,
-                    phone: document.getElementById('phone').value,
-                    image: e.target.result,
-                    descriptor: Array.from(detection.descriptor)
+                    name,
+                    age,
+                    address,
+                    phone,
+                    image: imageData,
+                    descriptor: Array.from(descriptor)
                 });
 
                 localStorage.setItem('people', JSON.stringify(storedPeople));
                 updateGallery();
-                alert('Profile saved!');
-            };
-            reader.readAsDataURL(file);
+                alert('Profile saved successfully!');
+            } catch (error) {
+                alert(error.message);
+            } finally {
+                isProcessing = false;
+                toggleLoader('save', false);
+            }
         }
 
-        // Face recognition
+        // Face recognition function
         async function captureImage() {
-            const video = document.getElementById('camera');
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
+            if (isProcessing) return;
+            
+            try {
+                isProcessing = true;
+                toggleLoader('scan', true);
 
-            const detection = await faceapi.detectSingleFace(canvas)
-                .withFaceLandmarks()
-                .withFaceDescriptor();
+                const video = document.getElementById('camera');
+                const canvas = document.createElement('canvas');
+                [canvas.width, canvas.height] = [video.videoWidth, video.videoHeight];
+                canvas.getContext('2d').drawImage(video, 0, 0);
 
-            if (!detection) return showResult('No face detected');
+                const detection = await faceapi.detectSingleFace(canvas)
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
 
-            let match = null;
-            let minDistance = Infinity;
+                if (!detection) throw new Error('No face detected');
+
+                const match = findBestMatch(detection.descriptor);
+                showResult(match);
+            } catch (error) {
+                showResult(null, error.message);
+            } finally {
+                isProcessing = false;
+                toggleLoader('scan', false);
+            }
+        }
+
+        // Helper functions
+        function getFormData() {
+            return {
+                name: document.getElementById('name').value.trim(),
+                age: document.getElementById('age').value,
+                address: document.getElementById('address').value.trim(),
+                phone: document.getElementById('phone').value.trim()
+            };
+        }
+
+        async function processImage(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const img = await faceapi.bufferToImage(e.target.result);
+                        const detection = await faceapi.detectSingleFace(img)
+                            .withFaceLandmarks()
+                            .withFaceDescriptor();
+
+                        if (!detection) reject(new Error('No face detected in image'));
+                        
+                        resolve({
+                            imageData: e.target.result,
+                            descriptor: detection.descriptor
+                        });
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function findBestMatch(currentDescriptor) {
+            let bestMatch = { distance: Infinity };
             
             storedPeople.forEach(person => {
                 const distance = faceapi.euclideanDistance(
-                    detection.descriptor,
+                    currentDescriptor,
                     new Float32Array(person.descriptor)
                 );
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    match = person;
+                
+                if (distance < bestMatch.distance) {
+                    bestMatch = { ...person, distance };
                 }
             });
 
-            showResult(match, minDistance);
+            return bestMatch.distance < 0.6 ? bestMatch : null;
         }
 
-        // Display results
-        function showResult(person, distance) {
+        function showResult(match, error) {
             const resultDiv = document.getElementById('result');
-            resultDiv.innerHTML = person && distance < 0.6 ? `
-                <div class="result-card">
-                    <h3>${person.name}</h3>
-                    <p>Age: ${person.age}</p>
-                    <p>Address: ${person.address}</p>
-                    <p>Phone: ${person.phone}</p>
-                    <p>Confidence: ${Math.round((1 - distance) * 100)}%</p>
+            resultDiv.innerHTML = match ? `
+                <div class="result-card" style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                    <h3 style="color: #2c3e50; margin-bottom: 15px;">
+                        <i class="fas fa-check-circle" style="color: #27ae60;"></i> 
+                        Match Found: ${match.name}
+                    </h3>
+                    <p><strong>Age:</strong> ${match.age}</p>
+                    <p><strong>Address:</strong> ${match.address}</p>
+                    <p><strong>Phone:</strong> ${match.phone}</p>
+                    <p><strong>Confidence:</strong> ${Math.round((1 - match.distance) * 100)}%</p>
                 </div>
-            ` : '<p>No matching profile found</p>';
+            ` : `
+                <div class="result-card" style="background: #f8f9fa; padding: 20px; border-radius: 10px;">
+                    <h3 style="color: #2c3e50;">
+                        <i class="fas fa-times-circle" style="color: #e74c3c;"></i> 
+                        ${error || 'No matching profile found'}
+                    </h3>
+                </div>
+            `;
         }
 
-        // Update profile gallery
+        function toggleLoader(type, show) {
+            const loader = document.getElementById(`${type}Loader`);
+            const button = document.getElementById(`${type}Btn`);
+            loader.style.display = show ? 'block' : 'none';
+            button.disabled = show;
+        }
+
         function updateGallery() {
             const gallery = document.getElementById('gallery');
             gallery.innerHTML = storedPeople.map(person => `
                 <div class="profile-card">
-                    <img src="${person.image}" class="profile-img">
+                    <img src="${person.image}" class="profile-img" alt="${person.name}">
                     <h4>${person.name}</h4>
                     <p>${person.age} years</p>
                 </div>
@@ -227,4 +345,4 @@
         })();
     </script>
 </body>
-  </html>
+</html>
